@@ -1,11 +1,5 @@
 #!/bin/sh
 
-# Requires openvpn access to download the images
-VM_IMAGE_URL=https://download.suse.de/ibs/home:/oholecek:/SUMA5-VM/images/SUSE-Manager-Server.x86_64-5.0.0-Qcow-Build12.23.qcow2
-VM_IMAGE=`basename ${VM_IMAGE_URL}`
-
-SLE15SP5_URL=https://download.suse.de/install/SLE-15-SP5-Full-GM/SLE-15-SP5-Full-x86_64-GM-Media1.iso
-
 # Prepare libvirt storage pool and network
 
 mkdir -p pool
@@ -64,13 +58,9 @@ virsh net-autostart susecon24-demo
 virsh net-start susecon24-demo
 fi
 
-# Download the VM image
-if test ! -e "${PWD}/pool/${VM_IMAGE}"; then
-    curl -L -o "${PWD}/pool/${VM_IMAGE}" ${VM_IMAGE_URL}
-fi
-
 # Prepare an overlay image and a data disk
-qemu-img create -f qcow2 -F qcow2 -b "${PWD}/pool/${VM_IMAGE}" "${PWD}/pool/manager.qcow2" 40G
+SUMA_IMAGE_NAME=SUSE-Manager-Server.x86_64-5.0.0-Qcow-Build12.23.qcow2
+qemu-img create -f qcow2 -F qcow2 -b "${PWD}/data/vms/${SUMA_IMAGE_NAME}" "${PWD}/pool/manager.qcow2" 40G
 qemu-img create -f qcow2 "${PWD}/pool/manager-data.qcow2" 500G
 
 virsh pool-refresh susecon24-demo
@@ -111,6 +101,9 @@ BASE_VERSION=\`xmllint --xpath "//version/text()" /etc/products.d/baseproduct\`
 SUSEConnect --product \${BASE_PRODUCT}/\${BASE_VERSION}/\${ARCH} --email ${SCC_EMAIL} --regcode ${SCC_SLE_MICRO_REGCODE}
 SUSEConnect --product SUSE-Manager-Server/5.0/\${ARCH} --email ${SCC_EMAIL} --regcode ${SCC_SUMA_SERVER_REGCODE}
 
+# 9pfs mount
+echo "mirror /srv/mirror 9p trans=virtio,version=9p2000.L,nofail,_netdev,x-mount.mkdir 0 0" >> /etc/fstab
+
 # Leave a marker
 echo "Configured with combustion" > /etc/issue.d/combustion
 EOF
@@ -122,7 +115,8 @@ virt-install -n susecon24-manager \
     --import \
     --disk "${PWD}/pool/manager.qcow2,format=qcow2" \
     --disk "${PWD}/pool/manager-data.qcow2,format=qcow2" \
-    --network network=susecon24-demo,mac.address=2A:C3:A7:A7:01:02 \
+    --filesystem "${PWD}/data/mirror,mirror" \
+    --network network=susecon24-demo,mac=2A:C3:A7:A7:01:02 \
     --graphics vnc \
     --os-variant slem5.5 \
     --qemu-commandline="-fw_cfg name=opt/org.opensuse.combustion/script,file=${PWD}/pool/combustion" \
@@ -154,9 +148,11 @@ admin:
 scc:
   user: ${UYUNI_SCC_USER}
   password: ${UYUNI_SCC_PASSWORD}
+mirrorPath: /srv/mirror
+organization: SUSECon24
 EOF
 ${SCP} mgradm.yaml root@192.168.110.2:/root/
-${SSH} root@192.168.110.2 mgradm install podman -c /root/mgradm.yaml --organization=SUSECon24
+${SSH} root@192.168.110.2 mgradm install podman -c /root/mgradm.yaml
 
 # Add Ubuntu 22.04 and SLE 15 SP5 channels
 ${SSH} root@192.168.11.2 mgrctl exec -- mgr-sync add channels \
@@ -187,13 +183,34 @@ do
     sleep 20
 done
 
-# TODO Download the SLE 15SP5 ISO on the server and copy it in the container
+# TODO Create the auto-installation distro 
 
 # TODO Create the distro profile
 
-# TODO Download the Ubuntu qcow2 image
+# Create the Ubuntu VM
+cat >ubuntu-user-data.yaml <<EOF
+#cloud-config
 
-# TODO Create the Ubuntu VM
+ssh_pwauth: true
+password: linux
+chpasswd:
+  expire: false
+
+ssh_authorized_keys:
+  - `cat "${PWD}/id_rsa.pub"`
+EOF
+
+qemu-img create -f qcow2 -F qcow2 -b "${PWD}/data/vms/jammy-server-cloudimg-amd64.img" "${PWD}/pool/srv1.qcow2" 40G
+virt-install -n susecon24-srv1 \
+    --memory 1024 \
+    --vcpus 1 \
+    --cloud-init user-data=$PWD/ubuntu-user-data.yaml \
+    --import \
+    --disk $PWD/pool/srv1.qcow2,format=qcow2 \
+    --network network=susecon24-demo,mac=2A:C3:A7:A7:01:03 \
+    --graphics=vnc \
+    --os-variant ubuntu22.04 \
+    --noautoconsole
 
 # TODO Bootstrap the Ubuntu VM
 

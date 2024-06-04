@@ -3,4 +3,8 @@ id_rsa*
 pool
 net.xml
 pool.xml
+ubuntu-user_data.yaml
 mgradm.yaml
+data/tmp
+data/mirror
+data/vms
