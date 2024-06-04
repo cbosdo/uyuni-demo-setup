@@ -39,6 +39,12 @@ scc:
   password: ${UYUNI_SCC_PASSWORD}
   archs: [x86_64, amd64]
   repo_names:
+    - SUSE-Manager-Server-5.0-Pool
+    - SUSE-Manager-Server-5.0-Updates
+    - SUSE-Manager-Proxy-5.0-Pool
+    - SUSE-Manager-Proxy-5.0-Updates
+    - SUSE-Manager-Retail-Branch-Server-5.0-Pool
+    - SUSE-Manager-Retail-Branch-Server-5.0-Updates
     # SLE 15-SP5 Products
     - SLE-Product-SLES15-SP5-Pool
     - SLE-Product-SLES15-SP5-Updates
@@ -47,9 +53,12 @@ scc:
     - SLE-Module-Basesystem15-SP5-Updates
     - SLE-Module-Server-Applications15-SP5-Pool
     - SLE-Module-Server-Applications15-SP5-Updates
-    - SLE-Module-Python3-Pool
-    - SLE-Module-Python3-Updates
+    - SLE-Module-Python3-15-SP5-Pool
+    - SLE-Module-Python3-15-SP5-Updates
     - SLE15-SP5-Installer-Updates
+    # Manager Tools
+    - SLE-Manager-Tools15-Pool
+    - SLE-Manager-Tools15-Updates
     # Ubuntu
     - Ubuntu-20.04-SUSE-Manager-Tools
     - Ubuntu-22.04-SUSE-Manager-Tools
@@ -76,7 +85,12 @@ deb http://archive.ubuntu.com/ubuntu jammy main
 deb http://archive.ubuntu.com/ubuntu jammy-updates main
 deb http://archive.ubuntu.com/ubuntu jammy-security main
 
+deb http://archive.ubuntu.com/ubuntu jammy main
+deb http://archive.ubuntu.com/ubuntu jammy-updates main
+deb http://security.ubuntu.com/ubuntu jammy-security main
+
 clean http://archive.ubuntu.com/ubuntu
+clean http://security.ubuntu.com/ubuntu
 EOF
 podman run -it --rm -v $PWD:/srv docker.io/aptmirror/apt-mirror2 /srv/tmp/apt-mirror.list
 

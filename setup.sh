@@ -1,5 +1,20 @@
 #!/bin/sh
 
+wait_for_machine()
+{
+    SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i id_rsa"
+    SSH="ssh ${SSH_OPTS}"
+    SCP="scp ${SSH_OPTS}"
+    while true;
+    do
+        ${SSH} root@$1 /usr/bin/true 2>/dev/null
+        if test $? -eq 0; then
+            break
+        fi
+        sleep 10
+    done
+}
+
 # Prepare libvirt storage pool and network
 
 mkdir -p pool
@@ -123,17 +138,7 @@ virt-install -n susecon24-manager \
     --noautoconsole
 
 # Wait for the server to be up
-SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i id_rsa"
-SSH="ssh ${SSH_OPTS}"
-SCP="scp ${SSH_OPTS}" 
-while true;
-do
-    ${SSH} root@192.168.110.2 /usr/bin/true 2>/dev/null
-    if test $? -eq 0; then
-        break
-    fi
-    sleep 10
-done
+wait_for_machine 192.168.110.2
 
 # Format and mount the data disk
 ${SSH} root@192.168.110.2 mgr-storage-server /dev/vdb
@@ -154,11 +159,12 @@ EOF
 ${SCP} mgradm.yaml root@192.168.110.2:/root/
 ${SSH} root@192.168.110.2 mgradm install podman -c /root/mgradm.yaml
 
+${SSH} root@192.168.110.2 mgrctl exec -- "echo -e 'mgrsync.user = admin\nmgrsync.password = ${UYUNI_ADMIN_PASSWORD}' >root/.mgr-sync"
+
 # Add Ubuntu 22.04 and SLE 15 SP5 channels
 ${SSH} root@192.168.11.2 mgrctl exec -- mgr-sync add channels \
     ubuntu-2204-amd64-main-amd64 \
     ubuntu-22.04-suse-manager-tools-amd64 \
-    ubuntu-2204-amd64-main-backports-amd64 \
     ubuntu-2204-amd64-main-security-amd64 \
     ubuntu-2204-amd64-main-updates-amd64 \
     sle-product-sles15-sp5-pool-x86_64 \
@@ -183,7 +189,7 @@ do
     sleep 20
 done
 
-# TODO Create the auto-installation distro 
+# TODO Create the auto-installation distro
 
 # TODO Create the distro profile
 
@@ -211,6 +217,8 @@ virt-install -n susecon24-srv1 \
     --graphics=vnc \
     --os-variant ubuntu22.04 \
     --noautoconsole
+
+wait_for_machine 192.168.110.3
 
 # TODO Bootstrap the Ubuntu VM
 
