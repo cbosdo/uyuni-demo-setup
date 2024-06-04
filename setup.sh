@@ -192,7 +192,7 @@ ${SSH} root@192.168.110.2 mgrctl exec -- mgr-sync add channels \
 while true
 do
     FINISHED_SYNCS=`${SSH} root@192.168.110.2 mgrctl exec -- grep "\"'Sync completed'\"" -r /var/log/rhn/reposync/ 2>/dev/null | wc -l`
-    if test ${FINISHED_SYNCS} -eq 16; then
+    if test ${FINISHED_SYNCS} -eq 15; then
         break
     fi
     sleep 20
