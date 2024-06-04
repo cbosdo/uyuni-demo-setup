@@ -7,7 +7,7 @@ wait_for_machine()
     SCP="scp ${SSH_OPTS}"
     while true;
     do
-        ${SSH} root@$1 /usr/bin/true 2>/dev/null
+        ${SSH} $1 /usr/bin/true 2>/dev/null
         if test $? -eq 0; then
             break
         fi
@@ -138,7 +138,7 @@ virt-install -n susecon24-manager \
     --noautoconsole
 
 # Wait for the server to be up
-wait_for_machine 192.168.110.2
+wait_for_machine root@192.168.110.2
 
 # Format and mount the data disk
 ${SSH} root@192.168.110.2 mgr-storage-server /dev/vdb
@@ -227,7 +227,7 @@ virt-install -n susecon24-srv1 \
     --os-variant ubuntu22.04 \
     --noautoconsole
 
-wait_for_machine 192.168.110.3
+wait_for_machine ubuntu@192.168.110.3
 
 # TODO Bootstrap the Ubuntu VM
 
