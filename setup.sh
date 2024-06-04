@@ -159,10 +159,11 @@ EOF
 ${SCP} mgradm.yaml root@192.168.110.2:/root/
 ${SSH} root@192.168.110.2 mgradm install podman -c /root/mgradm.yaml
 
-${SSH} root@192.168.110.2 mgrctl exec -- "echo -e 'mgrsync.user = admin\nmgrsync.password = ${UYUNI_ADMIN_PASSWORD}' >root/.mgr-sync"
+${SSH} root@192.168.110.2 mgrctl exec -- "\"echo -e 'mgrsync.user = admin\nmgrsync.password = ${UYUNI_ADMIN_PASSWORD}' >/root/.mgr-sync\""
+${SSH} root@192.168.110.2 mgrctl exec -- mgr-sync refresh 
 
 # Add Ubuntu 22.04 and SLE 15 SP5 channels
-${SSH} root@192.168.11.2 mgrctl exec -- mgr-sync add channels \
+${SSH} root@192.168.110.2 mgrctl exec -- mgr-sync add channels \
     ubuntu-2204-amd64-main-amd64 \
     ubuntu-22.04-suse-manager-tools-amd64 \
     ubuntu-2204-amd64-main-security-amd64 \
