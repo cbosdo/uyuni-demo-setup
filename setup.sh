@@ -160,7 +160,15 @@ ${SCP} mgradm.yaml root@192.168.110.2:/root/
 ${SSH} root@192.168.110.2 mgradm install podman -c /root/mgradm.yaml
 
 ${SSH} root@192.168.110.2 mgrctl exec -- "\"echo -e 'mgrsync.user = admin\nmgrsync.password = ${UYUNI_ADMIN_PASSWORD}' >/root/.mgr-sync\""
-${SSH} root@192.168.110.2 mgrctl exec -- mgr-sync refresh 
+
+# Wait for product refresh to finish
+while true
+do
+    ${SSH} root@192.168.110.2 mgrctl exec -- mgr-sync list channels 2>/dev/null | grep ubuntu
+    if test $? -eq 0; then
+        break
+    fi
+done
 
 # Add Ubuntu 22.04 and SLE 15 SP5 channels
 ${SSH} root@192.168.110.2 mgrctl exec -- mgr-sync add channels \
