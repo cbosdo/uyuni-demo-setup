@@ -59,9 +59,11 @@ scc:
     # Manager Tools
     - SLE-Manager-Tools15-Pool
     - SLE-Manager-Tools15-Updates
+    - SLE-Manager-Tools15-BETA-Pool
+    - SLE-Manager-Tools15-BETA-Updates
     # Ubuntu
-    - Ubuntu-20.04-SUSE-Manager-Tools
     - Ubuntu-22.04-SUSE-Manager-Tools
+    - Ubuntu-22.04-SUSE-Manager-Tools-Beta
 EOF
 
 MINIMA_URL=https://github.com/uyuni-project/minima/releases/download/v0.13/minima_0.13_linux_amd64.tar.gz

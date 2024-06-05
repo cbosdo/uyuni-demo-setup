@@ -17,7 +17,7 @@ wait_for_machine()
 
 # Prepare libvirt storage pool and network
 
-mkdir -p pool
+mkdir -p pool tmp
 
 POOL_PATH=`virsh pool-dumpxml susecon24-demo 2>/dev/null | sed -n 's/^ *<path>\([^<]\+\)<\/path>/\1/p'`
 
@@ -29,7 +29,7 @@ fi
 
 # Create the pool
 if test "${POOL_PATH}" != "${PWD}/pool"; then
-cat > pool.xml << EOF
+cat > tmp/pool.xml << EOF
 <pool type='dir'>
   <name>susecon24-demo</name>
   <target>
@@ -43,7 +43,7 @@ cat > pool.xml << EOF
 </pool>
 EOF
 
-virsh pool-define pool.xml
+virsh pool-define tmp/pool.xml
 virsh pool-autostart susecon24-demo
 virsh pool-start susecon24-demo
 virsh pool-build susecon24-demo
@@ -51,7 +51,7 @@ fi
 
 # Create the network
 if test -z `virsh net-list --all --name | grep susecon24-demo`; then
-cat > net.xml << EOF
+cat > tmp/net.xml << EOF
 <network>
   <name>susecon24-demo</name>
   <forward mode='nat'/>
@@ -68,7 +68,7 @@ cat > net.xml << EOF
 </network>
 EOF
 
-virsh net-define net.xml
+virsh net-define tmp/net.xml
 virsh net-autostart susecon24-demo
 virsh net-start susecon24-demo
 fi
@@ -144,7 +144,7 @@ wait_for_machine root@192.168.110.2
 ${SSH} root@192.168.110.2 mgr-storage-server /dev/vdb
 
 # Install the SUSE Manager server
-cat > mgradm.yaml << EOF
+cat > tmp/mgradm.yaml << EOF
 ssl:
   password: ${UYUNI_SSL_PASSWORD}
 admin:
@@ -156,7 +156,7 @@ scc:
 mirrorPath: /srv/mirror
 organization: SUSECon24
 EOF
-${SCP} mgradm.yaml root@192.168.110.2:/root/
+${SCP} tmp/mgradm.yaml root@192.168.110.2:/root/
 ${SSH} root@192.168.110.2 mgradm install podman -c /root/mgradm.yaml
 
 ${SSH} root@192.168.110.2 mgrctl exec -- "\"echo -e 'mgrsync.user = admin\nmgrsync.password = ${UYUNI_ADMIN_PASSWORD}' >/root/.mgr-sync\""
@@ -174,12 +174,15 @@ done
 ${SSH} root@192.168.110.2 mgrctl exec -- mgr-sync add channels \
     ubuntu-2204-amd64-main-amd64 \
     ubuntu-22.04-suse-manager-tools-amd64 \
+    ubuntu-22.04-suse-manager-tools-beta-amd64 \
     ubuntu-2204-amd64-main-security-amd64 \
     ubuntu-2204-amd64-main-updates-amd64 \
     sle-product-sles15-sp5-pool-x86_64 \
     sle-product-sles15-sp5-updates-x86_64 \
     sle-manager-tools15-pool-x86_64-sp5 \
     sle-manager-tools15-updates-x86_64-sp5 \
+    sle-manager-tools15-beta-pool-x86_64-sp5 \
+    sle-manager-tools15-beta-updates-x86_64-sp5 \
     sle-module-basesystem15-sp5-pool-x86_64 \
     sle-module-basesystem15-sp5-updates-x86_64 \
     sle-module-server-applications15-sp5-pool-x86_64 \
@@ -192,20 +195,55 @@ ${SSH} root@192.168.110.2 mgrctl exec -- mgr-sync add channels \
 while true
 do
     FINISHED_SYNCS=`${SSH} root@192.168.110.2 mgrctl exec -- grep "\"'Sync completed'\"" -r /var/log/rhn/reposync/ 2>/dev/null | wc -l`
-    if test ${FINISHED_SYNCS} -eq 15; then
+    if test ${FINISHED_SYNCS} -eq 18; then
         break
     fi
     sleep 20
 done
 
-# TODO Create the auto-installation distro
+# Prepare the activation keys
+${SSH} root@192.168.110.2 mgrctl exec -- spacecmd -u admin -p ${UYUNI_ADMIN_PASSWORD} activationkey_create -- -n UBUNTU-2204 -b ubuntu-2204-amd64-main-amd64 -d "Ubuntu 22.04"
+${SSH} root@192.168.110.2 mgrctl exec -- spacecmd -u admin -p ${UYUNI_ADMIN_PASSWORD} activationkey_addchildchannels -- 1-UBUNTU-2204 \
+    ubuntu-22.04-suse-manager-tools-amd64 \
+    ubuntu-22.04-suse-manager-tools-beta-amd64
 
-# TODO Create the distro profile
+${SSH} root@192.168.110.2 mgrctl exec -- spacecmd -u admin -p ${UYUNI_ADMIN_PASSWORD} activationkey_create -- -n SLE-15-SP5 -b sle-product-sles15-sp5-pool-x86_64 -d "SLE 15 SP5"
+${SSH} root@192.168.110.2 mgrctl exec -- spacecmd -u admin -p ${UYUNI_ADMIN_PASSWORD} activationkey_addchildchannels -- 1-SLE-15-SP5 \
+    sle-manager-tools15-pool-x86_64-sp5 \
+    sle-manager-tools15-updates-x86_64-sp5 \
+    sle-module-basesystem15-sp5-pool-x86_64 \
+    sle-module-basesystem15-sp5-updates-x86_64 \
+    sle-module-python3-15-sp5-pool-x86_64 \
+    sle-module-python3-15-sp5-updates-x86_64 \
+    sle-module-server-applications15-sp5-pool-x86_64 \
+    sle-module-server-applications15-sp5-updates-x86_64
 
-# Create the Ubuntu VM
-cat >ubuntu-user-data.yaml <<EOF
+# Prepare the bootstrap repositories
+${SSH} root@192.168.110.2 mgrctl exec -- mgr-create-bootstrap-repo -a
+
+# Create the auto-installation distro
+${SSH} root@192.168.110.2 mgradm distribution copy /srv/mirror/isos/SLE-15-SP5-Full-x86_64-GM-Media1.iso
+${SSH} root@192.168.110.2 mgrctl exec -- spacecmd -u admin -p ${UYUNI_ADMIN_PASSWORD} api -- kickstart.tree.create \
+    --args "\'SLE-15-SP5,/srv/www/distributions/SLES15SP5,sle-product-sles15-sp5-pool-x86_64,sles15generic,insecure=1 useonlinerepo=1,\'"
+
+# Create the distro profile
+${SCP} sles15sp5-from-scratch-clm.xml root@192.168.110.2:/root/
+${SSH} root@192.168.110.2 mgrctl cp /root/sles15sp5-from-scratch-clm.xml server:/tmp/
+${SSH} root@192.168.110.2 mgrctl exec -- spacecmd -u admin -p ${UYUNI_ADMIN_PASSWORD} kickstart_import_raw -- \
+    -f /tmp/sles15sp5-from-scratch-clm.xml -d SLE-15-SP5 -n SLE-15-SP5-srv -v none
+
+${SSH} root@192.168.110.2 mgrctl exec -- spacecmd -u admin -p ${UYUNI_ADMIN_PASSWORD} kickstart_updatevariable SLE-15-SP5-srv distrotree SLE-15-SP5
+${SSH} root@192.168.110.2 mgrctl exec -- spacecmd -u admin -p ${UYUNI_ADMIN_PASSWORD} kickstart_updatevariable SLE-15-SP5-srv channel_prefix "_"
+${SSH} root@192.168.110.2 mgrctl exec -- spacecmd -u admin -p ${UYUNI_ADMIN_PASSWORD} kickstart_updatevariable SLE-15-SP5-srv registration_key "1-SLE-15-SP5"
+
+# Prepare the cloudinit ISO
+# virt-install forces the on_reboot to destroy if the --cloud-init parameter is used, so we prepare the ISO ourselves
+mkdir -p tmp/cloudinit
+cat >tmp/cloudinit/user-data <<EOF
 #cloud-config
 
+hostname: demo-srv1
+fqdn: demo-srv1.susecon24.com
 ssh_pwauth: true
 password: linux
 chpasswd:
@@ -213,15 +251,27 @@ chpasswd:
 
 ssh_authorized_keys:
   - `cat "${PWD}/id_rsa.pub"`
+
+bootcmd:
+  - [sed, 's/^GRUB_TIMEOUT_STYLE=.*/GRUB_TIMEOUT_STYLE=menu/; s/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=8/', -i, /etc/default/grub]
+  - [sed, 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=8/', -i, /etc/default/grub.d/50-cloudimg-settings.cfg]
+  - [grub-mkconfig, -o, /boot/grub/grub.cfg]
+  - [sh, -c, "cd /boot; ln -s /boot/grub/ grub2"]
+  - [ln, -s, /usr/sbin/grub-mkconfig, /usr/sbin/grub2-mkconfig]
 EOF
 
-qemu-img create -f qcow2 -F qcow2 -b "${PWD}/data/vms/jammy-server-cloudimg-amd64.img" "${PWD}/pool/srv1.qcow2" 40G
-virt-install -n susecon24-srv1 \
+echo "instance-id: demo-srv1" >tmp/cloudinit/meta-data
+
+xorrisofs -o pool/ubuntu-cloudinit.iso -J -V cidata -input-charset utf8 -rational-rock tmp/cloudinit/
+
+# Create the Ubuntu VM
+qemu-img create -f qcow2 -F qcow2 -b "${PWD}/data/vms/jammy-server-cloudimg-amd64.img" "${PWD}/pool/demo-srv1.qcow2" 40G
+virt-install -n susecon24-demo-srv1 \
     --memory 1024 \
     --vcpus 1 \
-    --cloud-init user-data=$PWD/ubuntu-user-data.yaml \
     --import \
-    --disk $PWD/pool/srv1.qcow2,format=qcow2 \
+    --disk $PWD/pool/demo-srv1.qcow2,format=qcow2 \
+    --disk $PWD/pool/ubuntu-cloudinit.iso,device=cdrom \
     --network network=susecon24-demo,mac=2A:C3:A7:A7:01:03 \
     --graphics=vnc \
     --os-variant ubuntu22.04 \
@@ -229,9 +279,25 @@ virt-install -n susecon24-srv1 \
 
 wait_for_machine ubuntu@192.168.110.3
 
-# TODO Bootstrap the Ubuntu VM
+# Eject the cloud init cdrom for future boots
+virsh change-media susecon24-demo-srv1 sda --eject --live --config
 
-# TODO Change the grub settings of the Ubuntu VM
+# Bootstrap the Ubuntu VM
+${SSH} root@192.168.110.2 mgrctl exec -- mgr-bootstrap --activation-keys=1-UBUNTU-2204 --script=ubuntu-bootstrap.sh --force-bundle
+${SSH} ubuntu@192.168.110.3 sudo sh -c '"curl -s http://manager.susecon24.com/pub/bootstrap/ubuntu-bootstrap.sh | bash -"'  
+${SSH} root@192.168.110.2 mgrctl exec -- salt-key -y --accept demo-srv1.susecon24.com
 
-# TODO Create a snapshot of the Ubuntu VM
+# Wait for Ubuntu system to be completely bootstrapped
+COMPLETED_TASKS=`spacecmd -u admin -p admin system_listeventhistory demo-srv1.susecon24.com 2>/dev/null | grep 'Status: \+Completed' | wc -l`
+while test COMPLETED_TASKS -ne 3
+do
+    sleep 10
+done
 
+# Create a snapshot of the Ubuntu VM
+cat >tmp/snapshot.xml <<EOF
+<domainsnapshot>
+    <name>ubuntu</name>
+</domainsnapshot>
+EOF
+virsh snapshot-create susecon24-demo-srv1 tmp/snapshot.xml
