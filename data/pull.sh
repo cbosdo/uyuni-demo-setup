@@ -3,7 +3,7 @@
 mkdir -p mirror/isos vms
 
 # Pull VM images
-SUMA_IMAGE_URL=https://download.suse.de/ibs/home:/oholecek:/SUMA5-VM/images/SUSE-Manager-Server.x86_64-5.0.0-Qcow-Build12.23.qcow2
+SUMA_IMAGE_URL=https://download.suse.de/ibs/home:/oholecek:/SUMA5-VM/images_head/SUSE-Manager-Server.x86_64-5.0.0-Qcow-Build16.3.qcow2
 UBUNTU2204_IMAGE_URL=https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img
 
 for IMAGE_URL in $SUMA_IMAGE_URL $UBUNTU2204_IMAGE_URL
@@ -73,6 +73,13 @@ tar xf `basename $MINIMA_URL`
 popd
 ./tmp/minima -c ${PWD}/tmp/minima.yaml sync
 
+# Mirror the SCC data
+curl -L -o tmp/refresh_scc_data.py https://raw.githubusercontent.com/uyuni-project/sumaform/master/salt/mirror/utils/refresh_scc_data.py
+
+pushd mirror
+python3 ../tmp/refresh_scc_data.py $UYUNI_SCC_USER:$UYUNI_SCC_PASSWORD
+popd
+
 # Mirror Ubuntu repositories
 cat >tmp/apt-mirror.list <<EOF
 set mirror_path    /srv/mirror/
@@ -95,11 +102,3 @@ clean http://archive.ubuntu.com/ubuntu
 clean http://security.ubuntu.com/ubuntu
 EOF
 podman run -it --rm -v $PWD:/srv docker.io/aptmirror/apt-mirror2 /srv/tmp/apt-mirror.list
-
-# Mirror the SCC data
-curl -L -o tmp/refresh_scc_data.py https://raw.githubusercontent.com/uyuni-project/sumaform/master/salt/mirror/utils/refresh_scc_data.py
-
-pushd mirror
-python3 ../tmp/refresh_scc_data.py $UYUNI_SCC_USER:$UYUNI_SCC_PASSWORD
-popd
-

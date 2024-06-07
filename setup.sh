@@ -74,7 +74,7 @@ virsh net-start susecon24-demo
 fi
 
 # Prepare an overlay image and a data disk
-SUMA_IMAGE_NAME=SUSE-Manager-Server.x86_64-5.0.0-Qcow-Build12.23.qcow2
+SUMA_IMAGE_NAME=SUSE-Manager-Server.x86_64-5.0.0-Qcow-Build16.3.qcow2
 qemu-img create -f qcow2 -F qcow2 -b "${PWD}/data/vms/${SUMA_IMAGE_NAME}" "${PWD}/pool/manager.qcow2" 40G
 qemu-img create -f qcow2 "${PWD}/pool/manager-data.qcow2" 500G
 
@@ -145,6 +145,7 @@ ${SSH} root@192.168.110.2 mgr-storage-server /dev/vdb
 
 # Install the SUSE Manager server
 cat > tmp/mgradm.yaml << EOF
+image: registry.suse.com/suse/manager/5.0/x86_64/server:5.0.0-rc
 ssl:
   password: ${UYUNI_SSL_PASSWORD}
 admin:
@@ -153,7 +154,7 @@ admin:
 scc:
   user: ${UYUNI_SCC_USER}
   password: ${UYUNI_SCC_PASSWORD}
-mirrorPath: /srv/mirror
+mirror: /srv/mirror
 organization: SUSECon24
 EOF
 ${SCP} tmp/mgradm.yaml root@192.168.110.2:/root/
@@ -174,15 +175,12 @@ done
 ${SSH} root@192.168.110.2 mgrctl exec -- mgr-sync add channels \
     ubuntu-2204-amd64-main-amd64 \
     ubuntu-22.04-suse-manager-tools-amd64 \
-    ubuntu-22.04-suse-manager-tools-beta-amd64 \
     ubuntu-2204-amd64-main-security-amd64 \
     ubuntu-2204-amd64-main-updates-amd64 \
     sle-product-sles15-sp5-pool-x86_64 \
     sle-product-sles15-sp5-updates-x86_64 \
     sle-manager-tools15-pool-x86_64-sp5 \
     sle-manager-tools15-updates-x86_64-sp5 \
-    sle-manager-tools15-beta-pool-x86_64-sp5 \
-    sle-manager-tools15-beta-updates-x86_64-sp5 \
     sle-module-basesystem15-sp5-pool-x86_64 \
     sle-module-basesystem15-sp5-updates-x86_64 \
     sle-module-server-applications15-sp5-pool-x86_64 \
@@ -195,7 +193,7 @@ ${SSH} root@192.168.110.2 mgrctl exec -- mgr-sync add channels \
 while true
 do
     FINISHED_SYNCS=`${SSH} root@192.168.110.2 mgrctl exec -- grep "\"'Sync completed'\"" -r /var/log/rhn/reposync/ 2>/dev/null | wc -l`
-    if test ${FINISHED_SYNCS} -eq 18; then
+    if test ${FINISHED_SYNCS} -eq 15; then
         break
     fi
     sleep 20
@@ -204,8 +202,7 @@ done
 # Prepare the activation keys
 ${SSH} root@192.168.110.2 mgrctl exec -- spacecmd -u admin -p ${UYUNI_ADMIN_PASSWORD} activationkey_create -- -n UBUNTU-2204 -b ubuntu-2204-amd64-main-amd64 -d "Ubuntu 22.04"
 ${SSH} root@192.168.110.2 mgrctl exec -- spacecmd -u admin -p ${UYUNI_ADMIN_PASSWORD} activationkey_addchildchannels -- 1-UBUNTU-2204 \
-    ubuntu-22.04-suse-manager-tools-amd64 \
-    ubuntu-22.04-suse-manager-tools-beta-amd64
+    ubuntu-22.04-suse-manager-tools-amd64
 
 ${SSH} root@192.168.110.2 mgrctl exec -- spacecmd -u admin -p ${UYUNI_ADMIN_PASSWORD} activationkey_create -- -n SLE-15-SP5 -b sle-product-sles15-sp5-pool-x86_64 -d "SLE 15 SP5"
 ${SSH} root@192.168.110.2 mgrctl exec -- spacecmd -u admin -p ${UYUNI_ADMIN_PASSWORD} activationkey_addchildchannels -- 1-SLE-15-SP5 \
