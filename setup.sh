@@ -154,7 +154,7 @@ admin:
 scc:
   user: ${UYUNI_SCC_USER}
   password: ${UYUNI_SCC_PASSWORD}
-mirror: /srv/mirror
+#mirror: /srv/mirror
 organization: SUSECon24
 EOF
 ${SCP} tmp/mgradm.yaml root@192.168.110.2:/root/
