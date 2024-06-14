@@ -1,19 +1,6 @@
 #!/bin/sh
 
-wait_for_machine()
-{
-    SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i id_rsa"
-    SSH="ssh ${SSH_OPTS}"
-    SCP="scp ${SSH_OPTS}"
-    while true;
-    do
-        ${SSH} $1 /usr/bin/true 2>/dev/null
-        if test $? -eq 0; then
-            break
-        fi
-        sleep 10
-    done
-}
+. ./functions.sh
 
 # Prepare libvirt storage pool and network
 
@@ -61,7 +48,6 @@ cat > tmp/net.xml << EOF
     <dhcp>
       <range start='192.168.110.2' end='192.168.110.254'/>
       <host mac='2A:C3:A7:A7:01:02' name='manager' ip='192.168.110.2'/>
-      <host mac='2A:C3:A7:A7:01:03' name='demo-srv1' ip='192.168.110.3'/>
       <bootp file='pxelinux.0' server='192.168.110.2'/>
     </dhcp>
   </ip>
@@ -233,68 +219,5 @@ ${SSH} root@192.168.110.2 mgrctl exec -- spacecmd -u admin -p ${UYUNI_ADMIN_PASS
 ${SSH} root@192.168.110.2 mgrctl exec -- spacecmd -u admin -p ${UYUNI_ADMIN_PASSWORD} kickstart_updatevariable SLE-15-SP5-srv channel_prefix "_"
 ${SSH} root@192.168.110.2 mgrctl exec -- spacecmd -u admin -p ${UYUNI_ADMIN_PASSWORD} kickstart_updatevariable SLE-15-SP5-srv registration_key "1-SLE-15-SP5"
 
-# Prepare the cloudinit ISO
-# virt-install forces the on_reboot to destroy if the --cloud-init parameter is used, so we prepare the ISO ourselves
-mkdir -p tmp/cloudinit
-cat >tmp/cloudinit/user-data <<EOF
-#cloud-config
-
-hostname: demo-srv1
-fqdn: demo-srv1.susecon24.com
-ssh_pwauth: true
-password: linux
-chpasswd:
-  expire: false
-
-ssh_authorized_keys:
-  - `cat "${PWD}/id_rsa.pub"`
-
-bootcmd:
-  - [sed, 's/^GRUB_TIMEOUT_STYLE=.*/GRUB_TIMEOUT_STYLE=menu/; s/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=8/', -i, /etc/default/grub]
-  - [sed, 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=8/', -i, /etc/default/grub.d/50-cloudimg-settings.cfg]
-  - [grub-mkconfig, -o, /boot/grub/grub.cfg]
-  - [sh, -c, "cd /boot; ln -s /boot/grub/ grub2"]
-  - [ln, -s, /usr/sbin/grub-mkconfig, /usr/sbin/grub2-mkconfig]
-EOF
-
-echo "instance-id: demo-srv1" >tmp/cloudinit/meta-data
-
-xorrisofs -o pool/ubuntu-cloudinit.iso -J -V cidata -input-charset utf8 -rational-rock tmp/cloudinit/
-
-# Create the Ubuntu VM
-qemu-img create -f qcow2 -F qcow2 -b "${PWD}/data/vms/jammy-server-cloudimg-amd64.img" "${PWD}/pool/demo-srv1.qcow2" 40G
-virt-install -n susecon24-demo-srv1 \
-    --memory 1024 \
-    --vcpus 1 \
-    --import \
-    --disk $PWD/pool/demo-srv1.qcow2,format=qcow2 \
-    --disk $PWD/pool/ubuntu-cloudinit.iso,device=cdrom \
-    --network network=susecon24-demo,mac=2A:C3:A7:A7:01:03 \
-    --graphics=vnc \
-    --os-variant ubuntu22.04 \
-    --noautoconsole
-
-wait_for_machine ubuntu@192.168.110.3
-
-# Eject the cloud init cdrom for future boots
-virsh change-media susecon24-demo-srv1 sda --eject --live --config
-
-# Bootstrap the Ubuntu VM
-${SSH} root@192.168.110.2 mgrctl exec -- mgr-bootstrap --activation-keys=1-UBUNTU-2204 --script=ubuntu-bootstrap.sh --force-bundle
-${SSH} ubuntu@192.168.110.3 sudo sh -c '"curl -s http://manager.susecon24.com/pub/bootstrap/ubuntu-bootstrap.sh | bash -"'  
-${SSH} root@192.168.110.2 mgrctl exec -- salt-key -y --accept demo-srv1.susecon24.com
-
-# Wait for Ubuntu system to be completely bootstrapped
-COMPLETED_TASKS=`spacecmd -u admin -p admin system_listeventhistory demo-srv1.susecon24.com 2>/dev/null | grep 'Status: \+Completed' | wc -l`
-while test COMPLETED_TASKS -ne 3
-do
-    sleep 10
-done
-
-# Create a snapshot of the Ubuntu VM
-cat >tmp/snapshot.xml <<EOF
-<domainsnapshot>
-    <name>ubuntu</name>
-</domainsnapshot>
-EOF
-virsh snapshot-create susecon24-demo-srv1 tmp/snapshot.xml
+./setup-ubuntu.sh demo-srv1 2A:C3:A7:A7:01:03 192.168.110.3 
+./setup-ubuntu.sh demo-srv2 2A:C3:A7:A7:01:04 192.168.110.4 
